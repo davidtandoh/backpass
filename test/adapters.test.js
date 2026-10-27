@@ -157,6 +157,40 @@ test("codex enumerates Omnigent worker stores alongside its store without duplic
   }
 });
 
+test("codex deduplicates only eligible rollouts and prefers the configured store", () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-codex-cutoff-"));
+  const configuredHome = path.join(fakeHome, "configured");
+  const workerHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-a", "codex-home");
+  const cutoffMs = Date.UTC(2026, 9, 27, 12);
+  const copies = [configuredHome, workerHome].map((root) => {
+    const dir = path.join(root, "sessions", "2026", "10", "27");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "rollout-shared.jsonl");
+    fs.copyFileSync(path.join(FIXTURES, "codex-omnigent-rollout.jsonl"), file);
+    return file;
+  });
+  const [configured, worker] = copies;
+  const previous = { HOME: process.env.HOME, CODEX_HOME: process.env.CODEX_HOME };
+  process.env.HOME = fakeHome;
+  process.env.CODEX_HOME = configuredHome;
+  try {
+    fs.utimesSync(configured, (cutoffMs - 1000) / 1000, (cutoffMs - 1000) / 1000);
+    fs.utimesSync(worker, cutoffMs / 1000, cutoffMs / 1000);
+    assert.deepEqual(codex.enumerate({ cutoffMs }).map((entry) => entry.path), [worker]);
+    assert.deepEqual(codex.enumerate().map((entry) => entry.path), [configured]);
+
+    fs.utimesSync(configured, cutoffMs / 1000, cutoffMs / 1000);
+    fs.utimesSync(worker, (cutoffMs + 1000) / 1000, (cutoffMs + 1000) / 1000);
+    assert.deepEqual(codex.enumerate({ cutoffMs }).map((entry) => entry.path), [configured]);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
 test("codex adapter reads the recorded git remote, enabling tier-2 association", () => {
   const file = path.join(FIXTURES, "codex-rollout.jsonl");
   const descriptor = codex.classify(candidateFor(file));

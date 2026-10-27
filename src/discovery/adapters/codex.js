@@ -57,6 +57,7 @@ export function enumerate({ cutoffMs } = {}) {
             const file = path.join(day, entry.name);
             const stat = statOrNull(file);
             if (!stat) continue;
+            if (cutoffMs && stat.mtimeMs < cutoffMs) continue;
             // Codex rollout filenames contain the session timestamp and UUID. A
             // copied rollout keeps that name even when its store root changes.
             if (seen.has(entry.name)) continue;
