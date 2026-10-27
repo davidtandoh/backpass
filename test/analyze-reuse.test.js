@@ -49,6 +49,10 @@ if (argv.includes("config") && argv.includes("show")) {
   process.exit(0);
 }
 if (argv.includes("--file")) {
+  if (process.env.BACKPASS_TEST_ANALYSIS_RESPONSE) {
+    process.stdout.write(process.env.BACKPASS_TEST_ANALYSIS_RESPONSE + "\\n");
+    process.exit(0);
+  }
   process.stdout.write(JSON.stringify({
     positive: [{ instruction: "AG-001", moment: "start", effect: "followed it", quote: "Ran make build as instructed." }],
     negative: [],
@@ -105,7 +109,7 @@ const ANALYZE_ARGS = [
   "--json",
 ];
 
-function runAnalyze(dir, home, extraArgs = []) {
+function runAnalyze(dir, home, extraArgs = [], response = undefined) {
   const result = spawnSync(process.execPath, [CLI, ...ANALYZE_ARGS, ...extraArgs], {
     cwd: dir,
     env: {
@@ -115,6 +119,7 @@ function runAnalyze(dir, home, extraArgs = []) {
       PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
       BACKPASS_ACPX_BIN: fakeAcpx,
       NO_COLOR: "1",
+      BACKPASS_TEST_ANALYSIS_RESPONSE: response === undefined ? "" : JSON.stringify(response),
     },
     encoding: "utf8",
     timeout: 20000,
@@ -124,6 +129,48 @@ function runAnalyze(dir, home, extraArgs = []) {
 
 const MEMORY = "# Agent instructions\n\n- Run `make build` before every push.\n";
 const MEMORY_EDITED = "# Agent instructions\n\n- Run `make build` before every push.\n- Never skip the changelog.\n";
+
+test("provider and harness errors fail analysis and surface their message", () => {
+  const message = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+  const responses = [
+    { type: "error", status: 400, error: { type: "invalid_request_error", message, code: "model_not_found" } },
+    { type: "error", message: "Harness session failed" },
+    { error: "Provider unavailable", positive: [], negative: [], gaps: [] },
+    { is_error: true, result: "Harness turn failed", positive: [], negative: [], gaps: [] },
+  ];
+  for (const response of responses) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-error-home-"));
+    const dir = initRepo(MEMORY);
+    writeSession(home, "session-a", dir);
+    const result = runAnalyze(dir, home, [], response);
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual([result.summary.analyzed, result.summary.failed], [0, 1]);
+    const [evidence] = new State(dir).listEvidence();
+    assert.equal(evidence.status, "failed");
+    const expected =
+      typeof response.error === "string"
+        ? response.error
+        : response.error?.message || response.message || response.result;
+    assert.ok(evidence.error.includes(expected), evidence.error);
+    assert.ok(result.stderr.includes(expected), result.stderr);
+  }
+});
+
+test("malformed analysis shapes fail while explicit empty finding arrays succeed", () => {
+  for (const response of [{}, [], { positive: [], negative: [] }, { positive: [], negative: [], gaps: null }]) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-shape-home-"));
+    const dir = initRepo(MEMORY);
+    writeSession(home, "session-a", dir);
+    const result = runAnalyze(dir, home, [], response);
+    assert.deepEqual([result.summary.analyzed, result.summary.failed], [0, 1]);
+    assert.match(new State(dir).listEvidence()[0].error, /analysis.*(shape|arrays)/);
+  }
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-empty-home-"));
+  const dir = initRepo(MEMORY);
+  writeSession(home, "session-a", dir);
+  const result = runAnalyze(dir, home, [], { positive: [], negative: [], gaps: [] });
+  assert.deepEqual([result.summary.analyzed, result.summary.failed], [1, 0]);
+});
 
 test("the first analysis performs work, an unchanged second reuses it, and --force reanalyzes anyway", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-reuse-home-"));
