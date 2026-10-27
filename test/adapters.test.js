@@ -115,6 +115,91 @@ test("codex adapter honors CODEX_HOME", () => {
   }
 });
 
+test("codex enumerates Omnigent worker stores alongside its store without duplicate rollouts", () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-omnigent-home-"));
+  const workerHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-a", "codex-home");
+  const otherHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-b", "codex-home");
+  const writeRollout = (root, fixture, name, day = "27") => {
+    const dir = path.join(root, "sessions", "2026", "10", day);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(FIXTURES, fixture), path.join(dir, name));
+  };
+  const personal = "rollout-personal.jsonl";
+  const worker = "rollout-worker.jsonl";
+  writeRollout(path.join(fakeHome, ".codex"), "codex-rollout.jsonl", personal);
+  writeRollout(workerHome, "codex-rollout.jsonl", personal);
+  writeRollout(workerHome, "codex-omnigent-rollout.jsonl", worker);
+  writeRollout(otherHome, "codex-omnigent-rollout.jsonl", "rollout-old.jsonl", "01");
+  fs.mkdirSync(path.join(fakeHome, ".omnigent", "codex-native", "missing-store"));
+  const previous = { HOME: process.env.HOME, CODEX_HOME: process.env.CODEX_HOME };
+  process.env.HOME = fakeHome;
+  delete process.env.CODEX_HOME;
+  try {
+    const cutoffMs = Date.UTC(2026, 9, 26);
+    const candidates = codex.enumerate({ cutoffMs });
+    assert.deepEqual(candidates.map((entry) => path.basename(entry.path)).sort(), [personal, worker]);
+    const descriptor = codex.classify(candidates.find((entry) => entry.path.endsWith(worker)));
+    assert.equal(descriptor.id, "omnigent-worker-session");
+    assert.equal(descriptor.cwd, "/repo/demo");
+    assert.deepEqual(
+      messages(codex.read(candidates.find((entry) => entry.path.endsWith(worker))).events).map((e) => e.role),
+      ["user", "assistant"],
+    );
+    process.env.CODEX_HOME = workerHome;
+    assert.equal(codex.enumerate({ cutoffMs }).length, 2, "an overlapping CODEX_HOME is scanned once");
+    process.env.CODEX_HOME = path.join(fakeHome, "absent");
+    assert.equal(codex.enumerate({ cutoffMs }).length, 2, "a missing configured store does not hide workers");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("codex deduplicates only eligible rollouts and prefers the configured store", () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-codex-cutoff-"));
+  const configuredHome = path.join(fakeHome, "configured");
+  const workerHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-a", "codex-home");
+  const cutoffMs = Date.UTC(2026, 9, 27, 12);
+  const copies = [configuredHome, workerHome].map((root) => {
+    const dir = path.join(root, "sessions", "2026", "10", "27");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "rollout-shared.jsonl");
+    fs.copyFileSync(path.join(FIXTURES, "codex-omnigent-rollout.jsonl"), file);
+    return file;
+  });
+  const [configured, worker] = copies;
+  const previous = { HOME: process.env.HOME, CODEX_HOME: process.env.CODEX_HOME };
+  process.env.HOME = fakeHome;
+  process.env.CODEX_HOME = configuredHome;
+  try {
+    fs.utimesSync(configured, (cutoffMs - 1000) / 1000, (cutoffMs - 1000) / 1000);
+    fs.utimesSync(worker, cutoffMs / 1000, cutoffMs / 1000);
+    assert.deepEqual(
+      codex.enumerate({ cutoffMs }).map((entry) => entry.path),
+      [worker],
+    );
+    assert.deepEqual(
+      codex.enumerate().map((entry) => entry.path),
+      [configured],
+    );
+
+    fs.utimesSync(configured, cutoffMs / 1000, cutoffMs / 1000);
+    fs.utimesSync(worker, (cutoffMs + 1000) / 1000, (cutoffMs + 1000) / 1000);
+    assert.deepEqual(
+      codex.enumerate({ cutoffMs }).map((entry) => entry.path),
+      [configured],
+    );
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
 test("codex adapter reads the recorded git remote, enabling tier-2 association", () => {
   const file = path.join(FIXTURES, "codex-rollout.jsonl");
   const descriptor = codex.classify(candidateFor(file));

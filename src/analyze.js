@@ -335,6 +335,23 @@ async function analyzeOne({
     if (!parsed) {
       throw new Error("analysis returned no parseable JSON");
     }
+    if (
+      parsed.type === "error" ||
+      parsed.isError === true ||
+      parsed.is_error === true ||
+      parsed.status === "error" ||
+      parsed.status === "failed" ||
+      parsed.error
+    ) {
+      const message =
+        parsed.error?.message || parsed.message || parsed.error || parsed.result || "provider or harness error";
+      throw new Error(`analysis failed: ${typeof message === "string" ? message : JSON.stringify(message)}`);
+    }
+    // Sanitization drops weak findings, but a missing finding array is a failed
+    // response, not evidence that the session had no findings.
+    if (Array.isArray(parsed) || !["positive", "negative", "gaps"].every((key) => Array.isArray(parsed[key]))) {
+      throw new Error("analysis returned an invalid shape: expected positive, negative, and gaps arrays");
+    }
 
     return {
       status: "ok",

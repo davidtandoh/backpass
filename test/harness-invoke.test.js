@@ -211,7 +211,7 @@ if (argv.includes("sessions") && argv.includes("new")) {
 if (argv.includes("exec")) {
   spawnWrappedPi();
   spawnOverriddenAgent();
-  process.stdout.write('{"edits":[],"notes":[]}\\n');
+  process.stdout.write('{"positive":[],"negative":[],"gaps":[],"edits":[],"notes":[]}\\n');
   process.exit(0);
 }
 if (argv.includes("--file")) {
@@ -222,7 +222,7 @@ if (argv.includes("--file")) {
     process.stderr.write("USAGE error: unknown option '-s'\\n");
     process.exit(2);
   }
-  process.stdout.write('{"edits":[],"notes":[]}\\n');
+  process.stdout.write('{"positive":[],"negative":[],"gaps":[],"edits":[],"notes":[]}\\n');
   process.exit(0);
 }
 process.exit(0);
