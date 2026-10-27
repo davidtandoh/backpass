@@ -6,6 +6,7 @@ import {
   attachToolResults,
   contentToEvents,
   home,
+  listDirs,
   parseJsonLine,
   readHeadLines,
   readJsonl,
@@ -19,6 +20,7 @@ import {
  * repo, `git.repository_url` - which is why codex stays deterministic even after the
  * worktree is deleted (tier 2). The store is date-sharded and large (10k+ rollouts on
  * a working machine), so discovery reads only line 1 and leans on the scan cache.
+ * Omnigent also keeps this layout under ~/.omnigent/codex-native/<worker>/codex-home.
  */
 
 export const name = "codex";
@@ -32,26 +34,35 @@ export function storeRoot() {
  * @param {{ cutoffMs?: number }} [options]
  */
 export function enumerate({ cutoffMs } = {}) {
-  const root = storeRoot();
+  const roots = new Set([
+    storeRoot(),
+    ...listDirs(home(".omnigent", "codex-native")).map((dir) => path.join(dir, "codex-home", "sessions")),
+  ]);
   const out = [];
-  if (!fs.existsSync(root)) return out;
+  const seen = new Set();
 
-  for (const year of shardDirs(root)) {
-    for (const month of shardDirs(year)) {
-      for (const day of shardDirs(month)) {
-        if (cutoffMs && dayIsBefore(root, day, cutoffMs)) continue;
-        let files;
-        try {
-          files = fs.readdirSync(day, { withFileTypes: true });
-        } catch {
-          continue;
-        }
-        for (const entry of files) {
-          if (!entry.isFile() || !entry.name.startsWith("rollout-") || !entry.name.endsWith(".jsonl")) continue;
-          const file = path.join(day, entry.name);
-          const stat = statOrNull(file);
-          if (!stat) continue;
-          out.push({ key: file, path: file, mtimeMs: stat.mtimeMs, bytes: stat.size });
+  for (const root of roots) {
+    for (const year of shardDirs(root)) {
+      for (const month of shardDirs(year)) {
+        for (const day of shardDirs(month)) {
+          if (cutoffMs && dayIsBefore(root, day, cutoffMs)) continue;
+          let files;
+          try {
+            files = fs.readdirSync(day, { withFileTypes: true });
+          } catch {
+            continue;
+          }
+          for (const entry of files) {
+            if (!entry.isFile() || !entry.name.startsWith("rollout-") || !entry.name.endsWith(".jsonl")) continue;
+            const file = path.join(day, entry.name);
+            const stat = statOrNull(file);
+            if (!stat) continue;
+            // Codex rollout filenames contain the session timestamp and UUID. A
+            // copied rollout keeps that name even when its store root changes.
+            if (seen.has(entry.name)) continue;
+            seen.add(entry.name);
+            out.push({ key: file, path: file, mtimeMs: stat.mtimeMs, bytes: stat.size });
+          }
         }
       }
     }

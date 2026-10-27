@@ -115,6 +115,48 @@ test("codex adapter honors CODEX_HOME", () => {
   }
 });
 
+test("codex enumerates Omnigent worker stores alongside its store without duplicate rollouts", () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-omnigent-home-"));
+  const workerHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-a", "codex-home");
+  const otherHome = path.join(fakeHome, ".omnigent", "codex-native", "worker-b", "codex-home");
+  const writeRollout = (root, fixture, name, day = "27") => {
+    const dir = path.join(root, "sessions", "2026", "10", day);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(FIXTURES, fixture), path.join(dir, name));
+  };
+  const personal = "rollout-personal.jsonl";
+  const worker = "rollout-worker.jsonl";
+  writeRollout(path.join(fakeHome, ".codex"), "codex-rollout.jsonl", personal);
+  writeRollout(workerHome, "codex-rollout.jsonl", personal);
+  writeRollout(workerHome, "codex-omnigent-rollout.jsonl", worker);
+  writeRollout(otherHome, "codex-omnigent-rollout.jsonl", "rollout-old.jsonl", "01");
+  fs.mkdirSync(path.join(fakeHome, ".omnigent", "codex-native", "missing-store"));
+  const previous = { HOME: process.env.HOME, CODEX_HOME: process.env.CODEX_HOME };
+  process.env.HOME = fakeHome;
+  delete process.env.CODEX_HOME;
+  try {
+    const cutoffMs = Date.UTC(2026, 9, 26);
+    const candidates = codex.enumerate({ cutoffMs });
+    assert.deepEqual(candidates.map((entry) => path.basename(entry.path)).sort(), [personal, worker]);
+    const descriptor = codex.classify(candidates.find((entry) => entry.path.endsWith(worker)));
+    assert.equal(descriptor.id, "omnigent-worker-session");
+    assert.equal(descriptor.cwd, "/repo/demo");
+    assert.deepEqual(
+      messages(codex.read(candidates.find((entry) => entry.path.endsWith(worker))).events).map((e) => e.role),
+      ["user", "assistant"],
+    );
+    process.env.CODEX_HOME = workerHome;
+    assert.equal(codex.enumerate({ cutoffMs }).length, 2, "an overlapping CODEX_HOME is scanned once");
+    process.env.CODEX_HOME = path.join(fakeHome, "absent");
+    assert.equal(codex.enumerate({ cutoffMs }).length, 2, "a missing configured store does not hide workers");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("codex adapter reads the recorded git remote, enabling tier-2 association", () => {
   const file = path.join(FIXTURES, "codex-rollout.jsonl");
   const descriptor = codex.classify(candidateFor(file));

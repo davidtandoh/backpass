@@ -235,6 +235,11 @@ relocated config dir does not hide its sessions. The variable is read from backp
 environment: if you reach that profile through an alias that only prefixes `claude`, set it
 for the backpass run too (`CLAUDE_CONFIG_DIR=~/.claude-work backpass`, or export it).
 
+Codex collection reads `$CODEX_HOME/sessions` (default `~/.codex/sessions`) and
+Omnigent worker stores under `~/.omnigent/codex-native/*/codex-home/sessions`.
+Copied rollouts with the same filename are collected once, with the configured store
+preferred over worker stores.
+
 Pi collection covers standalone sessions under `~/.pi/agent/sessions/` and BB-managed Pi
 sessions under `~/.bb/pi-bridge-sessions/`. It also honors `PI_CODING_AGENT_DIR`,
 `PI_CODING_AGENT_SESSION_DIR`, `BB_DATA_DIR`, and `BB_PI_BRIDGE_SESSION_DIR` when they are
