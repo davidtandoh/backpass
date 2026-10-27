@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.41](https://github.com/davidtandoh/backpass/compare/backpass-v0.1.40...backpass-v0.1.41) (2026-10-27)
+
+
+### Bug Fixes
+
+* reject failed analyses and discover Omnigent sessions ([#1](https://github.com/davidtandoh/backpass/issues/1)) ([496bb22](https://github.com/davidtandoh/backpass/commit/496bb22df3a3a14020cca65598306c853b0092bb))
+* **synthesize:** report a mid-run change to a watched repo file as observed ([#224](https://github.com/davidtandoh/backpass/issues/224)) ([1a1a175](https://github.com/davidtandoh/backpass/commit/1a1a17531de333d8095a944baa884a0896d5672d))
+
 ## [0.1.40](https://github.com/kunchenguid/backpass/compare/backpass-v0.1.39...backpass-v0.1.40) (2026-10-25)
 
 
