@@ -223,7 +223,7 @@ backpass reads the local transcript stores of seven harnesses directly. No API, 
 | Harness        | Store                                           | Repo tie                                            |
 | -------------- | ----------------------------------------------- | --------------------------------------------------- |
 | **claude**     | `~/.claude/projects/<munged-cwd>/<uuid>.jsonl`  | per-line `cwd`                                      |
-| **codex**      | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`  | `cwd` + recorded `git.repository_url`               |
+| **codex**      | configured and Omnigent stores (see below)      | `cwd` + recorded `git.repository_url`               |
 | **pi**         | standalone, OMP, and BB-managed Pi JSONL stores | session-header `cwd`                                |
 | **opencode**   | `~/.local/share/opencode/opencode.db` (sqlite)  | `session.directory` / `session_v2.directory`        |
 | **grok**       | `~/.grok/sessions/<encoded-cwd>/<uuid>/`        | `summary.json` `cwd` + `git_remotes`                |
@@ -237,8 +237,8 @@ for the backpass run too (`CLAUDE_CONFIG_DIR=~/.claude-work backpass`, or export
 
 Codex collection reads `$CODEX_HOME/sessions` (default `~/.codex/sessions`) and
 Omnigent worker stores under `~/.omnigent/codex-native/*/codex-home/sessions`.
-Copied rollouts with the same filename are collected once, with the configured store
-preferred over worker stores.
+Among rollouts eligible for the time window, copies with the same filename are collected
+once, with the configured store preferred over worker stores.
 
 Pi collection covers standalone sessions under `~/.pi/agent/sessions/` and BB-managed Pi
 sessions under `~/.bb/pi-bridge-sessions/`. It also honors `PI_CODING_AGENT_DIR`,
@@ -418,7 +418,10 @@ included in the new analysis is replaced with fresh judgments.
 
 If an analysis worker hits a fatal error, backpass stops handing out new transcripts and waits for every worker to stop before reporting the first fatal error.
 Calls already in flight finish, and their successful evidence is cached for reuse.
-Per-transcript failures, such as timeouts or unparseable output, still let the run continue; they are recorded, listed by `backpass status`, and retried on the next run.
+Per-transcript failures, such as timeouts, provider or harness errors, or unparseable output, still let the run continue; they are recorded, listed by `backpass status`, and retried on the next run.
+An analysis response must contain `positive`, `negative`, and `gaps` arrays. Missing or
+non-array fields count as a failed analysis; three empty arrays count as a successful
+analysis with no findings.
 
 ### 4. Aggregate gradients - and one judged consolidation call
 

@@ -176,12 +176,21 @@ test("codex deduplicates only eligible rollouts and prefers the configured store
   try {
     fs.utimesSync(configured, (cutoffMs - 1000) / 1000, (cutoffMs - 1000) / 1000);
     fs.utimesSync(worker, cutoffMs / 1000, cutoffMs / 1000);
-    assert.deepEqual(codex.enumerate({ cutoffMs }).map((entry) => entry.path), [worker]);
-    assert.deepEqual(codex.enumerate().map((entry) => entry.path), [configured]);
+    assert.deepEqual(
+      codex.enumerate({ cutoffMs }).map((entry) => entry.path),
+      [worker],
+    );
+    assert.deepEqual(
+      codex.enumerate().map((entry) => entry.path),
+      [configured],
+    );
 
     fs.utimesSync(configured, cutoffMs / 1000, cutoffMs / 1000);
     fs.utimesSync(worker, (cutoffMs + 1000) / 1000, (cutoffMs + 1000) / 1000);
-    assert.deepEqual(codex.enumerate({ cutoffMs }).map((entry) => entry.path), [configured]);
+    assert.deepEqual(
+      codex.enumerate({ cutoffMs }).map((entry) => entry.path),
+      [configured],
+    );
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
