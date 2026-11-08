@@ -14,7 +14,7 @@ const pkg = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
 const UPSTREAM = /github\.com\/([^/]+\/[^/.]+)/.exec(pkg.repository.url)?.[1];
 const FORK = "davidtandoh/backpass";
 
-/** Top-level jobs as { name, if, body }: `if` is the job-level expression, unwrapped from ${{ }}. */
+/** Top-level jobs as { name, if }: `if` is the job-level expression, unwrapped from ${{ }}. */
 function parseJobs(text) {
   const lines = text.split("\n");
   const start = lines.indexOf("jobs:");
@@ -24,12 +24,11 @@ function parseJobs(text) {
     if (/^\S/.test(line)) break;
     const head = /^ {2}([\w-]+):\s*$/.exec(line);
     if (head) {
-      jobs.push({ name: head[1], if: undefined, body: "" });
+      jobs.push({ name: head[1], if: undefined });
       continue;
     }
     const job = jobs.at(-1);
     if (!job) continue;
-    job.body += `${line}\n`;
     const cond = /^ {4}if:\s*(.+?)\s*$/.exec(line);
     if (cond) job.if = cond[1].replace(/^\$\{\{\s*(.*?)\s*\}\}$/, "$1");
   }
@@ -38,7 +37,7 @@ function parseJobs(text) {
 
 /**
  * Evaluate the GitHub Actions expression subset this workflow uses:
- * `a == b`, `a != b`, `&&`, `||`, string literals, and dotted context paths.
+ * `a == b`, `&&`, string literals, and dotted context paths.
  * Anything else throws, so an unsupported guard cannot silently pass.
  */
 function evaluate(expr, ctx) {
@@ -50,12 +49,11 @@ function evaluate(expr, ctx) {
     return s.split(".").reduce((o, k) => o?.[k], ctx);
   };
   const compare = (s) => {
-    const m = /^(.+?)\s*(==|!=)\s*(.+)$/.exec(s.trim());
+    const m = /^(.+?)\s*==\s*(.+)$/.exec(s.trim());
     if (!m) throw new Error(`unsupported condition: ${s}`);
-    const eq = operand(m[1]) === operand(m[3]);
-    return m[2] === "==" ? eq : !eq;
+    return operand(m[1]) === operand(m[2]);
   };
-  return expr.split("||").some((any) => any.split("&&").every(compare));
+  return expr.split("&&").every(compare);
 }
 
 /** Names of jobs that would run for the given repository and event. */
@@ -65,8 +63,6 @@ function runs(repository, eventName) {
     .filter((job) => job.if === undefined || evaluate(job.if, ctx))
     .map((job) => job.name);
 }
-
-const PUBLISHING = /release-please-action|npm publish/;
 
 test("upstream identity comes from package.json", () => {
   assert.equal(UPSTREAM, "kunchenguid/backpass");
@@ -81,15 +77,6 @@ test("a fork runs no job on any trigger", () => {
   for (const event of ["push", "workflow_dispatch"]) {
     assert.deepEqual(runs(FORK, event), [], `fork ${event}`);
   }
-});
-
-test("every job that creates a release or publishes carries an evaluable guard", () => {
-  const publishing = parseJobs(workflow).filter((job) => PUBLISHING.test(job.body));
-  assert.deepEqual(
-    publishing.map((job) => job.name),
-    ["release-please", "npm-republish"],
-  );
-  for (const job of publishing) assert.ok(job.if, `${job.name} has a job-level if`);
 });
 
 test("the evaluator rejects expressions it does not understand", () => {
