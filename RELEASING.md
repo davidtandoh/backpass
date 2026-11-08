@@ -4,9 +4,13 @@ Releases are driven by [release-please](https://github.com/googleapis/release-pl
 publish to npm tokenless via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
 (GitHub Actions OIDC, `npm publish --provenance`). No npm token is stored anywhere.
 
-**Nothing auto-publishes.** release-please only opens a release PR on `main`; a release is
-cut - and the publish step runs - solely when the maintainer merges that release PR. Merging
-ordinary PRs never publishes.
+Release creation and npm publication through this workflow run only in `kunchenguid/backpass`.
+Both jobs are skipped in forks, including manual dispatches.
+
+For pushes to `main`, release-please opens or updates a release PR. Merging that release PR
+creates the release and runs the publish step. Merging ordinary PRs never publishes.
+The workflow also supports a restricted manual republish of an existing release; see the
+recovery checks in [release-please.yml](.github/workflows/release-please.yml).
 
 ## Steady state
 
