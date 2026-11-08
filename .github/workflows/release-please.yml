@@ -20,7 +20,7 @@ permissions:
   id-token: write
 
 # Release creation and npm publication run only in the upstream repository.
-# A fork's GITHUB_TOKEN cannot open release PRs, and a fork must never publish.
+# Repository guards keep forks from creating releases or publishing packages.
 jobs:
   release-please:
     if: ${{ github.repository == 'kunchenguid/backpass' && github.event_name == 'push' }}

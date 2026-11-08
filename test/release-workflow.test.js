@@ -1,6 +1,5 @@
 // .github/workflows/release-please.yml must create releases and publish to npm
-// only in the upstream repository, never in a fork (where GITHUB_TOKEN cannot
-// open release PRs and a publish would be wrong). Each job's `if:` expression is
+// only in the upstream repository, never in a fork. Each job's `if:` expression is
 // evaluated against upstream and fork event contexts to decide which jobs run.
 import { test } from "node:test";
 import assert from "node:assert/strict";
